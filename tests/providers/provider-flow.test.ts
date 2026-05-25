@@ -8,6 +8,10 @@ import { deepseekConfig } from '../../src/main/providers/builtin/deepseek.ts'
 import { kimiConfig } from '../../src/main/providers/builtin/kimi.ts'
 import { mimoConfig } from '../../src/main/providers/builtin/mimo.ts'
 import {
+  DEFAULT_DEEPSEEK_MODEL_MAPPINGS,
+  createDefaultModelMappings,
+} from '../../src/main/store/types.ts'
+import {
   createKimiChatPayload,
   encodeKimiGrpcFrame,
   resolveDeepSeekChatOptions,
@@ -16,28 +20,85 @@ import {
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
 
-test('DeepSeek V4 models drive the actual upstream mode flags', () => {
-  assert.ok(deepseekConfig.supportedModels.includes('deepseek-v4-pro'))
-  assert.ok(deepseekConfig.supportedModels.includes('deepseek-v4-flash'))
-  assert.ok(deepseekConfig.supportedModels.includes('deepseek-reasoner'))
-  assert.equal(deepseekConfig.modelMappings?.['deepseek-v4-pro'], 'deepseek-chat')
+test('DeepSeek exposes two primary models and keeps feature aliases in default mappings', () => {
+  assert.deepEqual(deepseekConfig.supportedModels, ['deepseek-v4-flash', 'deepseek-v4-pro'])
+  assert.deepEqual(deepseekConfig.modelMappings, {
+    'deepseek-v4-flash': 'deepseek-v4-flash',
+    'deepseek-v4-pro': 'deepseek-v4-pro',
+  })
 
-  assert.deepEqual(
-    resolveDeepSeekChatOptions({ model: 'deepseek-v4-pro' }),
-    { modelType: 'expert', searchEnabled: false, thinkingEnabled: false },
-  )
   assert.deepEqual(
     resolveDeepSeekChatOptions({ model: 'deepseek-v4-flash' }),
     { modelType: 'default', searchEnabled: false, thinkingEnabled: false },
+  )
+  assert.deepEqual(
+    resolveDeepSeekChatOptions({ model: 'deepseek-v4-pro' }),
+    { modelType: 'expert', searchEnabled: false, thinkingEnabled: false },
   )
   assert.deepEqual(
     resolveDeepSeekChatOptions({ model: 'deepseek-v4-pro-think-search' }),
     { modelType: 'expert', searchEnabled: true, thinkingEnabled: true },
   )
   assert.deepEqual(
+    resolveDeepSeekChatOptions({ model: 'deepseek-v4-flash-search' }),
+    { modelType: 'default', searchEnabled: true, thinkingEnabled: false },
+  )
+  assert.deepEqual(
     resolveDeepSeekChatOptions({ model: 'deepseek-reasoner' }),
     { modelType: 'default', searchEnabled: false, thinkingEnabled: true },
   )
+  assert.deepEqual(
+    resolveDeepSeekChatOptions({ model: 'DeepSeek-R1-Search' }),
+    { modelType: 'default', searchEnabled: true, thinkingEnabled: true },
+  )
+  assert.deepEqual(
+    resolveDeepSeekChatOptions({ model: 'deepseek-v4-pro', web_search: true, reasoning_effort: 'high' }),
+    { modelType: 'expert', searchEnabled: true, thinkingEnabled: true },
+  )
+  assert.deepEqual(
+    resolveDeepSeekChatOptions({ model: 'deepseek-v4-flash' }, 'please use deep thinking if helpful'),
+    { modelType: 'default', searchEnabled: false, thinkingEnabled: false },
+  )
+})
+
+test('DeepSeek feature aliases are seeded as global model mappings', () => {
+  assert.deepEqual(DEFAULT_DEEPSEEK_MODEL_MAPPINGS['deepseek-v4-flash-think'], {
+    requestModel: 'deepseek-v4-flash-think',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  })
+  assert.deepEqual(DEFAULT_DEEPSEEK_MODEL_MAPPINGS['deepseek-v4-pro-search'], {
+    requestModel: 'deepseek-v4-pro-search',
+    actualModel: 'deepseek-v4-pro',
+    preferredProviderId: 'deepseek',
+  })
+  assert.deepEqual(DEFAULT_DEEPSEEK_MODEL_MAPPINGS['deepseek-reasoner'], {
+    requestModel: 'deepseek-reasoner',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  })
+})
+
+test('DeepSeek default model mapping seeding preserves editable replacement semantics', () => {
+  const first = createDefaultModelMappings()
+  first['deepseek-reasoner'].actualModel = 'mutated'
+  assert.equal(createDefaultModelMappings()['deepseek-reasoner'].actualModel, 'deepseek-v4-flash')
+
+  const storeSource = readFileSync(
+    join(root, 'src/main/store/store.ts'),
+    'utf8',
+  )
+
+  assert.match(storeSource, /initializeDefaultModelMappings\(\)/)
+  assert.doesNotMatch(storeSource, /modelMappings:\s*this\.normalizeModelMappings\(rawConfig\.modelMappings\)/)
+})
+
+test('DeepSeek provider config uses Web 2.0 browser headers', () => {
+  assert.equal(deepseekConfig.headers['X-App-Version'], '2.0.0')
+  assert.equal(deepseekConfig.headers['X-Client-Version'], '2.0.0')
+  assert.equal(deepseekConfig.headers['X-Client-Locale'], 'zh_CN')
+  assert.match(deepseekConfig.headers['User-Agent'], /Chrome\/148\.0\.0\.0/)
+  assert.match(deepseekConfig.headers['Sec-Ch-Ua'], /Chromium";v="148/)
 })
 
 test('Kimi K2.6 model mapping reaches the web chat request payload', () => {
@@ -107,12 +168,31 @@ test('Add provider dialog templates match the updated DeepSeek and Kimi flows', 
     'utf8',
   )
 
-  assert.match(source, /supportedModels: \['deepseek-v4-pro'.*'deepseek-reasoner'/s)
-  assert.match(source, /'deepseek-v4-pro': 'deepseek-chat'/)
+  assert.match(source, /supportedModels:\s*\['deepseek-v4-flash', 'deepseek-v4-pro'\]/)
+  assert.doesNotMatch(source, /supportedModels:\s*\['deepseek-v4-pro'.*'deepseek-reasoner'/s)
+  assert.doesNotMatch(source, /DeepSeek-V3\.2|DeepSeek-R1|deepseek-reasoner/)
   assert.match(source, /supportedModels: \['Kimi-K2\.6', 'Kimi-K2\.5'\]/)
   assert.match(source, /'Kimi-K2\.6': 'kimi-k2\.6'/)
   assert.match(source, /'Content-Type': 'application\/connect\+json'/)
   assert.doesNotMatch(source, /supportedModels: \['kimi', 'kimi-search', 'kimi-research', 'kimi-k1'\]/)
+})
+
+test('DeepSeek locale model labels only describe primary provider models', () => {
+  const zh = readFileSync(join(root, 'src/renderer/src/i18n/locales/zh-CN.json'), 'utf8')
+  const en = readFileSync(join(root, 'src/renderer/src/i18n/locales/en-US.json'), 'utf8')
+  const zhData = JSON.parse(zh)
+  const enData = JSON.parse(en)
+
+  assert.deepEqual(zhData.deepseek.models, {
+    'deepseek-v4-flash': 'DeepSeek V4 Flash',
+    'deepseek-v4-pro': 'DeepSeek V4 Pro',
+  })
+  assert.deepEqual(enData.deepseek.models, {
+    'deepseek-v4-flash': 'DeepSeek V4 Flash',
+    'deepseek-v4-pro': 'DeepSeek V4 Pro',
+  })
+  assert.equal('DeepSeek-R1' in zhData.deepseek.models, false)
+  assert.equal('deepseek-reasoner' in enData.deepseek.models, false)
 })
 
 test('forwarder delegates managed tool transformation to ToolCallingEngine', () => {
@@ -143,6 +223,15 @@ test('forwarder reads toolCallingConfig and does not use legacy prompt config fo
   assert.doesNotMatch(source, /promptInjectionService\.process\(/)
 })
 
+test('DeepSeek forwarder preserves requested model aliases for response parsing semantics', () => {
+  const source = readFileSync(
+    join(root, 'src/main/proxy/forwarder.ts'),
+    'utf8',
+  )
+
+  assert.match(source, /new DeepSeekStreamHandler\(\s*actualModel,[\s\S]*transformed\.plan,\s*request\.model\s*\)/)
+})
+
 test('active source no longer exposes DS2API or DSML tool protocol markers', () => {
   const activeFiles = [
     'src/main/proxy/toolCalling/ToolCallingEngine.ts',
@@ -154,5 +243,17 @@ test('active source no longer exposes DS2API or DSML tool protocol markers', () 
   for (const file of activeFiles) {
     const source = readFileSync(join(root, file), 'utf8')
     assert.doesNotMatch(source, /DS2API|DSML/i, file)
+  }
+})
+
+test('tool calling UI copy hides internal managed protocol ids', () => {
+  const localeFiles = [
+    'src/renderer/src/i18n/locales/zh-CN.json',
+    'src/renderer/src/i18n/locales/en-US.json',
+  ]
+
+  for (const file of localeFiles) {
+    const source = readFileSync(join(root, file), 'utf8')
+    assert.doesNotMatch(source, /managed_xml/, file)
   }
 })

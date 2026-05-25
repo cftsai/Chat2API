@@ -4,8 +4,8 @@
  */
 
 import type { ProviderStatus } from '../../shared/types'
-import type { LegacyToolPromptConfig, ToolCallingConfig } from '../../shared/toolCalling'
-import { DEFAULT_TOOL_CALLING_CONFIG } from '../../shared/toolCalling'
+import type { LegacyToolPromptConfig, ToolCallingConfig } from '../../shared/toolCalling.ts'
+import { DEFAULT_TOOL_CALLING_CONFIG } from '../../shared/toolCalling.ts'
 
 /**
  * Account Status Enum
@@ -183,6 +183,8 @@ export interface AppConfig {
   loadBalanceStrategy: LoadBalanceStrategy
   /** Model mapping configuration */
   modelMappings: Record<string, ModelMapping>
+  /** Default model mappings have been seeded into editable config */
+  defaultModelMappingsSeeded?: boolean
   /** UI theme */
   theme: Theme
   /** Auto start on boot */
@@ -698,6 +700,75 @@ export const DEFAULT_REQUEST_LOG_CONFIG: RequestLogConfig = {
   redactSensitiveData: true,
 }
 
+export const DEFAULT_DEEPSEEK_MODEL_MAPPINGS: Record<string, ModelMapping> = {
+  'deepseek-v4-flash-think': {
+    requestModel: 'deepseek-v4-flash-think',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-v4-flash-search': {
+    requestModel: 'deepseek-v4-flash-search',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-v4-flash-think-search': {
+    requestModel: 'deepseek-v4-flash-think-search',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-v4-pro-think': {
+    requestModel: 'deepseek-v4-pro-think',
+    actualModel: 'deepseek-v4-pro',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-v4-pro-search': {
+    requestModel: 'deepseek-v4-pro-search',
+    actualModel: 'deepseek-v4-pro',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-v4-pro-think-search': {
+    requestModel: 'deepseek-v4-pro-think-search',
+    actualModel: 'deepseek-v4-pro',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-chat': {
+    requestModel: 'deepseek-chat',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'deepseek-reasoner': {
+    requestModel: 'deepseek-reasoner',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'DeepSeek-V3.2': {
+    requestModel: 'DeepSeek-V3.2',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'DeepSeek-Search': {
+    requestModel: 'DeepSeek-Search',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'DeepSeek-R1': {
+    requestModel: 'DeepSeek-R1',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+  'DeepSeek-R1-Search': {
+    requestModel: 'DeepSeek-R1-Search',
+    actualModel: 'deepseek-v4-flash',
+    preferredProviderId: 'deepseek',
+  },
+}
+
+export function createDefaultModelMappings(): Record<string, ModelMapping> {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_DEEPSEEK_MODEL_MAPPINGS).map(([key, mapping]) => [key, { ...mapping }]),
+  )
+}
+
 /**
  * Default Application Configuration
  */
@@ -705,7 +776,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   proxyPort: 8080,
   proxyHost: '127.0.0.1',
   loadBalanceStrategy: 'round-robin',
-  modelMappings: {},
+  modelMappings: createDefaultModelMappings(),
+  defaultModelMappingsSeeded: true,
   theme: 'system',
   autoStart: false,
   autoStartProxy: false,
@@ -729,4 +801,4 @@ export const DEFAULT_CONFIG: AppConfig = {
  * Built-in Provider Configuration
  * Re-exported from providers/builtin/index.ts to avoid duplication
  */
-export { builtinProviders as BUILTIN_PROVIDERS } from '../providers/builtin'
+export { builtinProviders as BUILTIN_PROVIDERS } from '../providers/builtin/index.ts'
